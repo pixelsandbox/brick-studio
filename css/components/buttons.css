@@ -1,0 +1,371 @@
+/*
+ * Brick buttons. Behaviour (press sound, keyboard press look, magnetic hover,
+ * loading/success/error states) lives in js/ui/press.js; the markup contract
+ * is documented at the top of that module.
+ *
+ *   .btn-brick          glossy brick, studs on the top edge, solid side band
+ *   .btn-brick--ghost   outlined smooth tile (no studs: tiles are static-looking)
+ *   .btn-brick--sm/--lg sizes        .btn-brick--icon  square icon button
+ *
+ * Colour hooks (set inline or on a parent): --c (face), --c-deep (side,
+ * derived when omitted), --on-c (label colour).
+ */
+
+.btn-brick {
+  --_c: var(--c, var(--red));
+  --_c-deep: var(--c-deep, color-mix(in srgb, var(--_c) 68%, black));
+  --_on: var(--on-c, var(--on-accent));
+  --_side: var(--side);
+  --_press: 0px;
+  --_stud-h: 6px;
+  --_pitch: 28px;
+
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6em;
+  min-block-size: 48px;
+  margin-block: var(--_stud-h) var(--_side);
+  padding-block: 0;
+  padding-inline: 1.4em;
+  border: 0;
+  border-radius: var(--r-s);
+  background-color: var(--_c);
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, white 16%, transparent),
+    transparent 58%
+  );
+  color: var(--_on);
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transform: translateY(var(--_press));
+  box-shadow:
+    inset 0 1.5px 0 color-mix(in srgb, white 30%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, black 12%, transparent),
+    0 calc(var(--_side) - var(--_press)) 0 var(--_c-deep),
+    0 calc(var(--_side) - var(--_press) + 5px) 12px -5px color-mix(in srgb, black 45%, transparent);
+  transition:
+    transform var(--t-fast) var(--ease-snap),
+    box-shadow var(--t-fast) var(--ease-snap),
+    background-color var(--t-med) var(--ease-out),
+    color var(--t-med) var(--ease-out);
+}
+
+/* Studs: one masked strip; each tile of the mask is one rounded stud and the
+   background tiles in step, shading each stud like a lit cylinder. */
+.btn-brick::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset-inline: 10px;
+  inset-block-end: calc(100% - 1px);
+  block-size: calc(var(--_stud-h) + 1px);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, white 45%, transparent) 0 1px, transparent 1px),
+    linear-gradient(
+        90deg,
+        color-mix(in srgb, white 40%, transparent) 21%,
+        transparent 46% 58%,
+        color-mix(in srgb, black 24%, transparent) 79%
+      )
+      0 0 / var(--_pitch) 100% space no-repeat,
+    var(--_c);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 7' preserveAspectRatio='none'%3E%3Crect x='6' width='16' height='11' rx='2.6'/%3E%3C/svg%3E")
+    0 0 / var(--_pitch) 100% space no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 7' preserveAspectRatio='none'%3E%3Crect x='6' width='16' height='11' rx='2.6'/%3E%3C/svg%3E")
+    0 0 / var(--_pitch) 100% space no-repeat;
+  pointer-events: none;
+  transition: background-color var(--t-med) var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .btn-brick:hover {
+    --_press: -1px;
+  }
+}
+
+.btn-brick:active,
+.btn-brick.is-pressed {
+  --_press: calc(var(--_side) - 1px);
+  transition-duration: 60ms;
+}
+
+.btn-brick:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 4px;
+}
+
+.btn-brick[disabled],
+.btn-brick[aria-disabled='true']:not([data-state]) {
+  --_c: var(--light-grey);
+  --_c-deep: var(--dark-grey);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.btn-brick[disabled]:active,
+.btn-brick[aria-disabled='true']:active {
+  --_press: 0px;
+}
+
+/* ---- Sizes ------------------------------------------------------------ */
+.btn-brick--sm {
+  --_side: 4px;
+  --_stud-h: 5px;
+  --_pitch: 22px;
+  min-block-size: 38px;
+  padding-inline: 1.05em;
+  font-size: 0.8rem;
+}
+.btn-brick--lg {
+  --_side: 7px;
+  --_stud-h: 7px;
+  --_pitch: 32px;
+  min-block-size: 58px;
+  padding-inline: 1.8em;
+  font-size: 1rem;
+}
+.btn-brick--icon {
+  inline-size: 48px;
+  padding-inline: 0;
+}
+.btn-brick--icon.btn-brick--sm {
+  inline-size: 38px;
+}
+.btn-brick svg {
+  inline-size: 1.15em;
+  block-size: 1.15em;
+  flex: none;
+}
+
+/* ---- Ghost: outlined smooth tile --------------------------------------- */
+.btn-brick--ghost {
+  --_c: var(--c, var(--ink));
+  --_c-deep: var(--c-deep, var(--_c));
+  --_on: var(--on-c, var(--ink));
+  margin-block-start: 0;
+  background-color: var(--surface);
+  background-image: none;
+  box-shadow:
+    inset 0 0 0 2px var(--_c),
+    0 calc(var(--_side) - var(--_press)) 0 var(--_c-deep);
+}
+.btn-brick--ghost::before {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn-brick--ghost:hover {
+    background-color: var(--surface-2);
+  }
+}
+
+/* ---- Label + state layer (created by setButtonState) ------------------- */
+.btn-brick__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  transition:
+    opacity var(--t-fast) var(--ease-out),
+    transform var(--t-med) var(--ease-snap);
+}
+
+.btn-brick__state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.btn-brick__state > * {
+  grid-area: 1 / 1;
+}
+
+.btn-brick__dots {
+  display: flex;
+  gap: 7px;
+  opacity: 0;
+  transform: translateY(40%);
+  transition:
+    opacity var(--t-fast) var(--ease-out),
+    transform var(--t-med) var(--ease-snap);
+}
+/* Each loading dot is a stud seen from above. */
+.btn-brick__dots i {
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 30%, color-mix(in srgb, white 75%, transparent) 0 18%, transparent 46%),
+    currentColor;
+  box-shadow: 0 2px 0 color-mix(in srgb, currentColor 55%, black);
+}
+
+.btn-brick__glyph {
+  inline-size: 1.5em;
+  block-size: 1.5em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+}
+.btn-brick__glyph path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+
+.btn-brick[data-state] {
+  cursor: default;
+}
+.btn-brick[data-state] .btn-brick__label {
+  opacity: 0;
+  transform: translateY(-45%);
+}
+
+.btn-brick[data-state='loading'] .btn-brick__dots {
+  opacity: 1;
+  transform: none;
+}
+.btn-brick[data-state='loading'] .btn-brick__dots i {
+  animation: btn-brick-hop 760ms var(--ease-in-out) infinite;
+  animation-delay: calc(var(--i, 0) * 120ms);
+}
+
+.btn-brick[data-state='success'] {
+  --_c: var(--green);
+  --_c-deep: var(--green-deep);
+  --_on: var(--on-accent);
+  animation: btn-brick-pop 420ms var(--ease-snap);
+}
+.btn-brick--ghost[data-state='success'] {
+  --_c: var(--green);
+  --_c-deep: var(--green);
+  --_on: var(--green);
+}
+.btn-brick[data-state='success'] .btn-brick__glyph--ok {
+  opacity: 1;
+}
+.btn-brick[data-state='success'] .btn-brick__glyph--ok path {
+  transition: stroke-dashoffset 360ms var(--ease-out) 80ms;
+  stroke-dashoffset: 0;
+}
+
+.btn-brick[data-state='error'] {
+  --_c: var(--red-deep);
+  --_c-deep: color-mix(in srgb, var(--red-deep) 70%, black);
+  --_on: var(--on-accent);
+  animation: btn-brick-shake 480ms var(--ease-out);
+}
+.btn-brick--ghost[data-state='error'] {
+  --_c: var(--red);
+  --_c-deep: var(--red);
+  --_on: var(--red);
+}
+.btn-brick[data-state='error'] .btn-brick__glyph--err {
+  opacity: 1;
+}
+.btn-brick[data-state='error'] .btn-brick__glyph--err path {
+  transition: stroke-dashoffset 240ms var(--ease-out);
+  stroke-dashoffset: 0;
+}
+
+@keyframes btn-brick-hop {
+  0%,
+  55%,
+  100% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(-7px);
+  }
+}
+
+@keyframes btn-brick-pop {
+  0% {
+    scale: 1;
+  }
+  40% {
+    scale: 1.06;
+  }
+  100% {
+    scale: 1;
+  }
+}
+
+@keyframes btn-brick-shake {
+  0%,
+  100% {
+    translate: 0;
+  }
+  18% {
+    translate: -7px 0;
+  }
+  36% {
+    translate: 6px 0;
+  }
+  54% {
+    translate: -4px 0;
+  }
+  72% {
+    translate: 3px 0;
+  }
+  88% {
+    translate: -1px 0;
+  }
+}
+
+/* Visually hidden status region used by setButtonState(). */
+.btn-brick-live {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-brick,
+  .btn-brick::before,
+  .btn-brick__label,
+  .btn-brick__dots {
+    transition: none;
+  }
+  .btn-brick[data-state='success'],
+  .btn-brick[data-state='error'] {
+    animation: none;
+  }
+  .btn-brick[data-state='loading'] .btn-brick__dots i {
+    animation: btn-brick-blink 1.2s steps(2, jump-none) infinite;
+    animation-delay: calc(var(--i, 0) * 400ms);
+  }
+  .btn-brick__glyph path {
+    transition: none !important;
+  }
+}
+
+@keyframes btn-brick-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}

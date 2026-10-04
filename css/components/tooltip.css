@@ -1,0 +1,87 @@
+/*
+ * Animated tooltip: a brick tag that springs up from its trigger and tilts
+ * with the horizontal pointer velocity. js/ui/tooltip.js creates one shared
+ * .tip element and positions it (never overflowing the viewport).
+ */
+
+.tip {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 2147482000;
+  pointer-events: none;
+  visibility: hidden;
+}
+.tip.is-open {
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.tip__card {
+  --_c: var(--yellow);
+  --_ax: 50%;
+  position: relative;
+  display: block;
+  inline-size: max-content;
+  max-inline-size: min(260px, calc(100vw - 20px));
+  padding: 8px 12px 8px 15px;
+  border-radius: var(--r-s);
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow:
+    inset 4px 0 0 var(--_c),
+    0 4px 0 color-mix(in srgb, var(--ink) 55%, var(--bg)),
+    var(--shadow-2);
+  transform-origin: var(--_ax) calc(100% + 10px);
+  will-change: transform, opacity;
+}
+.tip[data-placement='bottom'] .tip__card {
+  transform-origin: var(--_ax) -10px;
+}
+
+.tip__title {
+  display: block;
+  font-family: var(--font-body);
+  font-size: var(--fs-s);
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.tip__sub {
+  display: block;
+  margin-block-start: 3px;
+  color: color-mix(in srgb, var(--bg) 72%, var(--ink));
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.tip__sub:empty {
+  display: none;
+}
+
+/* Notch: continues the tag's side band down towards the trigger. */
+.tip__notch {
+  position: absolute;
+  inset-block-start: calc(100% + 3px);
+  inset-inline-start: var(--_ax);
+  inline-size: 12px;
+  block-size: 7px;
+  margin-inline-start: -6px;
+  background: color-mix(in srgb, var(--ink) 55%, var(--bg));
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.tip[data-placement='bottom'] .tip__notch {
+  inset-block-start: auto;
+  inset-block-end: 100%;
+  background: var(--ink);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+@media (forced-colors: active) {
+  .tip__card {
+    border: 1px solid CanvasText;
+  }
+}

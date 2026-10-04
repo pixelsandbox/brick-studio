@@ -1,0 +1,193 @@
+/*
+ * Following pointer: a single stud seen from above that trails the pointer on
+ * a stiff spring, with a brick-tag label on a softer spring. js/ui/cursor.js
+ * adds html.has-brick-cursor only for fine pointers without reduced motion
+ * (or ?cursor=1), so the native cursor is never hidden otherwise.
+ */
+
+html.has-brick-cursor,
+html.has-brick-cursor * {
+  cursor: none !important;
+}
+/* Never hide the native cursor on form fields or opted-out regions. */
+html.has-brick-cursor :is(input, textarea, select, [contenteditable]:not([contenteditable='false']), [data-cursor-native]),
+html.has-brick-cursor :is([contenteditable]:not([contenteditable='false']), [data-cursor-native]) * {
+  cursor: auto !important;
+}
+
+.cursor {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease-out);
+}
+.cursor.is-visible {
+  opacity: 1;
+}
+
+.cursor__stud,
+.cursor__tag {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  will-change: transform;
+}
+
+.cursor__stud {
+  --_c: var(--c, var(--red));
+  --_c-deep: color-mix(in srgb, var(--_c) 62%, black);
+  --_k: 1;
+  --_down: 1;
+}
+
+.cursor__face {
+  position: absolute;
+  inset-block-start: -11px;
+  inset-inline-start: -11px;
+  inline-size: 22px;
+  block-size: 22px;
+  border-radius: 50%;
+  background:
+    radial-gradient(24% 24% at 36% 30%, color-mix(in srgb, white 78%, transparent), transparent),
+    radial-gradient(70% 70% at 40% 34%, color-mix(in srgb, white 14%, transparent), transparent 70%),
+    var(--_c);
+  box-shadow:
+    inset 1.5px 1.5px 0 color-mix(in srgb, white 32%, transparent),
+    inset -1px -1.5px 0 color-mix(in srgb, black 16%, transparent),
+    0 3px 0 var(--_c-deep),
+    0 7px 12px -3px color-mix(in srgb, black 45%, transparent);
+  transform: scale(calc(var(--_k) * var(--_down)));
+  transition:
+    transform 300ms var(--ease-snap),
+    opacity var(--t-fast) var(--ease-out);
+}
+
+/* Press imprint: a ring that expands from the stud on pointerdown. */
+.cursor__ring {
+  position: absolute;
+  inset-block-start: -11px;
+  inset-inline-start: -11px;
+  inline-size: 22px;
+  block-size: 22px;
+  border: 2px solid var(--_c);
+  border-radius: 50%;
+  opacity: 0;
+}
+.cursor.is-clicked .cursor__ring {
+  animation: cursor-ring 460ms var(--ease-out);
+}
+@keyframes cursor-ring {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+/* Grab grips: little chevrons either side of the stud (never on it). */
+.cursor__stud::before,
+.cursor__stud::after {
+  content: '';
+  position: absolute;
+  inset-block-start: -4px;
+  inline-size: 7px;
+  block-size: 7px;
+  border: solid var(--ink);
+  border-width: 2.5px 2.5px 0 0;
+  border-radius: 1px;
+  opacity: 0;
+  filter: drop-shadow(0 0 1.5px var(--bg));
+  transition:
+    opacity var(--t-fast) var(--ease-out),
+    translate var(--t-med) var(--ease-snap);
+}
+.cursor__stud::before {
+  inset-inline-start: -4px;
+  rotate: -135deg;
+  translate: -16px 0;
+}
+.cursor__stud::after {
+  inset-inline-start: -4px;
+  rotate: 45deg;
+  translate: 16px 0;
+}
+
+/* ---- States ---------------------------------------------------------------- */
+.cursor.is-link .cursor__stud {
+  --_k: 1.4;
+}
+.cursor.is-label .cursor__stud {
+  --_k: 1.55;
+}
+.cursor.is-grab .cursor__stud {
+  --_k: 1.2;
+}
+.cursor.is-grab .cursor__stud::before,
+.cursor.is-grab .cursor__stud::after {
+  opacity: 1;
+}
+.cursor.is-grab .cursor__stud::before {
+  translate: -22px 0;
+}
+.cursor.is-grab .cursor__stud::after {
+  translate: 22px 0;
+}
+.cursor.is-down .cursor__stud {
+  --_down: 0.78;
+}
+.cursor.is-grab.is-down .cursor__stud::before {
+  translate: -16px 0;
+}
+.cursor.is-grab.is-down .cursor__stud::after {
+  translate: 16px 0;
+}
+.cursor.is-grab.is-down .cursor__face {
+  transform: scale(calc(var(--_k) * 0.92), calc(var(--_k) * 0.8));
+}
+.cursor.is-off .cursor__face,
+.cursor.is-off .cursor__tag-body {
+  opacity: 0;
+  transform: scale(0.3);
+}
+.cursor.is-off .cursor__stud::before,
+.cursor.is-off .cursor__stud::after {
+  opacity: 0;
+}
+
+/* ---- Label tag ---------------------------------------------------------------- */
+.cursor__tag-body {
+  position: absolute;
+  inset-block-start: 18px;
+  inset-inline-start: 18px;
+  display: block;
+  padding: 7px 10px 6px;
+  border-radius: var(--r-xs);
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow:
+    0 3px 0 color-mix(in srgb, var(--ink) 55%, var(--bg)),
+    var(--shadow-1);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0;
+  transform: scale(0.4);
+  transform-origin: 0 0;
+  transition:
+    opacity 120ms var(--ease-out),
+    transform var(--t-med) var(--ease-snap);
+}
+.cursor.is-label .cursor__tag-body {
+  opacity: 1;
+  transform: scale(1);
+}

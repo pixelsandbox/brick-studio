@@ -1,0 +1,150 @@
+/*
+ * Split-flap board (js/ui/flipboard.js). Each character is a printed 1x1 tile
+ * (smooth, no studs) made of two static halves and two leaves that rotate on
+ * the seam. Tile colour: --c (default --ink), print colour: --on-c (default --bg).
+ */
+
+.flip {
+  --flip-w: 0.8em;
+  --flip-h: 1.18em;
+  --flip-gap: 0.07em;
+  --flip-r: 0.11em;
+  position: relative;
+  display: inline-block;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.flip__sr {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.flip__board {
+  --n: 1;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: var(--flip-gap);
+  box-sizing: content-box;
+  inline-size: calc(var(--n) * (var(--flip-w) + var(--flip-gap)) - var(--flip-gap));
+  padding: 0.08em 0.08em 0.2em;
+  margin: -0.08em -0.08em -0.2em;
+  overflow: hidden;
+  font-size: calc(1em * var(--flip-fit, 1));
+  line-height: 1;
+  vertical-align: bottom;
+  transition: inline-size 480ms var(--ease-out);
+}
+
+.flip__tile {
+  --_c: var(--c, var(--ink));
+  --_on: var(--on-c, var(--bg));
+  position: relative;
+  flex: none;
+  inline-size: var(--flip-w);
+  block-size: var(--flip-h);
+  border-radius: var(--flip-r);
+  perspective: 3.2em;
+  box-shadow: 0 0.07em 0 color-mix(in srgb, var(--_c) 60%, black);
+}
+.flip__tile.is-blank {
+  box-shadow: none;
+}
+
+.flip__half,
+.flip__leaf {
+  position: absolute;
+  inset-inline: 0;
+  block-size: 50%;
+  overflow: hidden;
+  background-color: var(--_c);
+  color: var(--_on);
+}
+.flip__half--top,
+.flip__leaf--top {
+  inset-block-start: 0;
+  border-radius: var(--flip-r) var(--flip-r) 0 0;
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, white 14%, transparent),
+    transparent 90%
+  );
+  transform-origin: 50% 100%;
+}
+.flip__half--bot,
+.flip__leaf--bot {
+  inset-block-end: 0;
+  border-radius: 0 0 var(--flip-r) var(--flip-r);
+  /* The seam between the flaps. */
+  box-shadow: inset 0 1px 0 color-mix(in srgb, black 45%, transparent);
+  transform-origin: 50% 0;
+}
+
+.flip__leaf {
+  visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform;
+}
+.flip__leaf--bot {
+  transform: rotateX(90deg);
+}
+.flip__tile.is-flipping .flip__leaf {
+  visibility: visible;
+}
+
+/* Empty slot: a recessed, unprinted flap. */
+.flip__half.is-blank,
+.flip__leaf.is-blank {
+  background-color: color-mix(in srgb, var(--_c) 10%, transparent);
+  background-image: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--_c) 18%, transparent);
+}
+
+.flip__ch {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
+  block-size: 200%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-block-start: 0.04em;
+  font-family: var(--font-display);
+  font-size: 0.68em;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+}
+.flip__half--bot .flip__ch,
+.flip__leaf--bot .flip__ch {
+  inset-block-start: -100%;
+}
+
+/* Number mode: no width animation; prefix/suffix printed beside the tiles. */
+.flip--number .flip__board {
+  inline-size: auto;
+  transition: none;
+}
+.flip__affix {
+  align-self: flex-start;
+  padding-inline: 0.06em;
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 0.62em;
+  font-weight: 700;
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flip__board {
+    transition: none;
+  }
+}
