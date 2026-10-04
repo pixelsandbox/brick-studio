@@ -1,8 +1,20 @@
 # Interactive 3D Brick Studio (`brick-studio`)
 
+<p align="center">
+  <a href="assets/img/demo.mp4" title="Click to watch full 1080p launch video with sound">
+    <img src="assets/img/demo-preview.gif" alt="Interactive 3D Brick Studio — Launch Video" width="100%" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://pixelsandbox.github.io/brick-studio/"><strong>🧱 Try Live Interactive 3D Studio</strong></a>
+  &nbsp;·&nbsp;
+  <a href="assets/img/demo.mp4"><strong>🔊 Watch Full 1080p Launch Video (with Sound)</strong></a>
+</p>
+
 An open-source, interactive **3D Toy-Brick Playground & Header Component** built with vanilla HTML, CSS, ES modules, **Three.js r161** (WebGL 2), and **cannon-es** (3D rigid-body physics).
 
-Spell **any custom word** (`SUJIT`, `HELLO`, `DESIGN`, `CREATE`, `PIXEL`, `MAKER`, etc.) in 3D interlocking bricks on a dynamic stud baseplate — complete with **360° turntable rotation**, **structural gravity collapse**, **drag-and-throw brick physics**, auto-reassembly, an interactive 3D minifigure companion, WebAudio procedural brick clicks, and a built-in **Set Word & Color Palette** modal.
+Spell **any custom word** (`SUJIT`, `HELLO`, `DESIGN`, `CREATE`, `PIXEL`, `MAKER`, etc.) in 3D interlocking bricks on a dynamic stud baseplate — complete with **360° turntable rotation**, **structural gravity collapse**, **force-based brick throw & screen-edge ricochet**, auto-reassembly, an interactive 3D minifigure companion, WebAudio procedural brick clicks, and a built-in **Set Word & Color Palette** modal.
 
 Built by **[Sujit Pradhan](https://www.sujitpradhan.com)** · Product Designer at Google ([LinkedIn](https://www.linkedin.com/in/sujitkumarpradhan/) · [Instagram](https://www.instagram.com/sujit.pradhan23/)).
 
@@ -14,7 +26,7 @@ Built by **[Sujit Pradhan](https://www.sujitpradhan.com)** · Product Designer a
 - **Full Tactile Physics & Structural Gravity (`cannon-es`)**:
   - **Hover** over bricks for spring-loaded lift and custom `Poke` stud cursor.
   - **Click** any brick to knock it loose with realistic 3D rigid-body collisions.
-  - **Drag & Throw** any brick right out of the build (`Grab` -> `Throw`).
+  - **Drag, Throw & Screen-Canvas Ricochet**: Fling any brick across the viewport (`Grab` -> `Throw`) — bricks bounce off the screen edges based on your throw force and never get lost off-screen.
   - **Structural Gravity Law**: Knocking or pulling out a bottom supporting brick causes any unsupported upper sections to immediately collapse downward under gravity.
   - **360° Drag Rotation**: Drag on the baseplate or empty stage to smoothly spin and tilt the entire 3D brick build 360°.
   - **Auto-Return**: Loose bricks automatically snap back to their home coordinates after a brief idle period.
@@ -33,7 +45,7 @@ brick-studio/
 ├── assets/
 │   ├── favicon.svg               # Red 2x2 brick icon (plain studs)
 │   ├── fonts/                    # Self-hosted variable fonts (Unbounded, Nunito, Geist Mono)
-│   └── img/                      # OpenGraph & preview assets
+│   └── img/                      # README demo video (demo.mp4, demo-preview.gif) & OpenGraph assets
 ├── css/
 │   ├── tokens.css                # Light (#f4f1ea) & Dark (#111418) theme tokens + brick palette
 │   ├── main.css                  # Header, Hero, Stage toolbar, Customizer Modal & Footer layout
