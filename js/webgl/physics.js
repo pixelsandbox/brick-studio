@@ -16,7 +16,7 @@ import {
 } from '../../vendor/cannon/cannon-es.js';
 
 const STEP = 1 / 60;
-const MAX_SUBSTEPS = 3;
+const MAX_SUBSTEPS = 5;
 const _v = new Vec3();
 
 export class Physics {
@@ -34,16 +34,16 @@ export class Physics {
     this.world.solver.tolerance = 0.001;
     this.brickMat = new Material('brick');
     this.groundMat = new Material('ground');
-    // ABS on ABS: low bounce, moderate friction, settles quickly.
+    // Lively ABS plastic bounce: bounces scale naturally with throw/impact force.
     this.world.addContactMaterial(new ContactMaterial(this.brickMat, this.brickMat, {
-      friction: 0.32,
-      restitution: 0.16,
+      friction: 0.28,
+      restitution: 0.46,
       contactEquationStiffness: 5e6,
       contactEquationRelaxation: 3,
     }));
     this.world.addContactMaterial(new ContactMaterial(this.brickMat, this.groundMat, {
-      friction: 0.48,
-      restitution: 0.12,
+      friction: 0.36,
+      restitution: 0.54,
       contactEquationStiffness: 5e6,
       contactEquationRelaxation: 3,
     }));
@@ -60,11 +60,11 @@ export class Physics {
   }
 
   /**
-   * Replaces the environment: an infinite ground at `groundY` plus soft
-   * invisible walls around `bounds` so loose bricks stay in view.
-   * @param {{groundY?: number, bounds: {minX: number, maxX: number, minZ: number, maxZ: number}, wallH?: number}} opts
+   * Replaces the environment: an infinite ground at `groundY` plus optional
+   * invisible walls around `bounds`.
+   * @param {{groundY?: number, bounds?: {minX: number, maxX: number, minZ: number, maxZ: number}|null, wallH?: number}} opts
    */
-  setEnvironment({ groundY = 0, bounds, wallH = 40 }) {
+  setEnvironment({ groundY = 0, bounds = null, wallH = 40 }) {
     for (const b of this.env) this.world.removeBody(b);
     this.env = [];
     const ground = new Body({ mass: 0, material: this.groundMat, shape: new Plane() });
@@ -126,11 +126,11 @@ export class Physics {
       mass,
       material: this.brickMat,
       shape: new Box(new Vec3(half[0], half[1], half[2])),
-      linearDamping: 0.04,
-      angularDamping: 0.12,
+      linearDamping: 0.025,
+      angularDamping: 0.1,
       allowSleep: true,
       sleepSpeedLimit: 0.35,
-      sleepTimeLimit: 0.45,
+      sleepTimeLimit: 0.5,
     });
     b.position.set(pos.x, pos.y, pos.z);
     b.quaternion.set(quat.x, quat.y, quat.z, quat.w);
@@ -140,10 +140,17 @@ export class Physics {
     if (vel) b.velocity.set(vel.x, vel.y, vel.z);
     if (angVel) b.angularVelocity.set(angVel.x, angVel.y, angVel.z);
     b.addEventListener('collide', (e) => {
-      if (!this.onImpact) return;
       const speed = Math.abs(e.contact.getImpactVelocityAlongNormal());
+      // Reinforce vertical bounce on hard ground impacts so force translates into visible multi-bounces
+      if (speed > 8 && (e.body === this.env[0] || e.contact.bi === this.env[0] || e.contact.bj === this.env[0])) {
+        const minBounceY = speed * 0.48;
+        if (b.velocity.y < minBounceY) {
+          b.velocity.y = minBounceY;
+        }
+      }
+      if (!this.onImpact) return;
       const now = performance.now();
-      if (speed > 4 && now - this._lastImpact > 45) {
+      if (speed > 3.5 && now - this._lastImpact > 40) {
         this._lastImpact = now;
         this.onImpact(speed);
       }
@@ -156,7 +163,7 @@ export class Physics {
   remove(id) {
     const b = this.bodies.get(id);
     if (!b) return;
-    if (this.grab && this.grab.id === id) this.release();
+    if (this.grab && this.grab.id === id) this.release(0);
     this.world.removeBody(b);
     this.bodies.delete(id);
   }
@@ -183,9 +190,13 @@ export class Physics {
       // Move the kinematic handle with a velocity so the constraint drags
       // smoothly and the brick keeps that momentum when released.
       const p = this.grabBody.position;
-      const k = Math.min(1, dt * 30);
+      const safeDt = Math.max(dt, 1 / 120);
+      const k = Math.min(1, dt * 45);
       _v.set((g.target.x - p.x) * k, (g.target.y - p.y) * k, (g.target.z - p.z) * k);
+      this.grabBody.velocity.set(_v.x / safeDt, _v.y / safeDt, _v.z / safeDt);
       p.vadd(_v, p);
+    } else {
+      this.grabBody.velocity.set(0, 0, 0);
     }
     this.world.step(STEP, Math.min(dt, STEP * MAX_SUBSTEPS), MAX_SUBSTEPS);
     let awake = 0;
@@ -209,36 +220,125 @@ export class Physics {
   startGrab(id, point) {
     const b = this.bodies.get(id);
     if (!b) return false;
-    this.release();
+    this.release(0);
     const pivot = new Vec3(point.x, point.y, point.z);
     const local = new Vec3();
     b.pointToLocalFrame(pivot, local);
     this.grabBody.position.copy(pivot);
     this.grabBody.velocity.set(0, 0, 0);
-    const c = new PointToPointConstraint(b, local, this.grabBody, new Vec3(0, 0, 0), b.mass * 400);
+    const c = new PointToPointConstraint(b, local, this.grabBody, new Vec3(0, 0, 0), b.mass * 900);
     this.world.addConstraint(c);
     b.wakeUp();
-    b.angularDamping = 0.85;
-    b.linearDamping = 0.35;
-    this.grab = { id, body: b, constraint: c, target: pivot.clone() };
+    b.angularDamping = 0.78;
+    b.linearDamping = 0.22;
+    const now = performance.now();
+    this.grab = {
+      id,
+      body: b,
+      constraint: c,
+      target: pivot.clone(),
+      samples: [{ x: pivot.x, y: pivot.y, z: pivot.z, t: now }],
+    };
     return true;
   }
 
   moveGrab(point) {
-    if (this.grab) this.grab.target.set(point.x, point.y, point.z);
+    if (!this.grab) return;
+    this.grab.target.set(point.x, point.y, point.z);
+    const now = performance.now();
+    const samples = this.grab.samples;
+    samples.push({ x: point.x, y: point.y, z: point.z, t: now });
+    while (samples.length > 2 && now - samples[0].t > 130) {
+      samples.shift();
+    }
   }
 
-  /** Lets go; the brick keeps its momentum (capped) so it can be thrown. */
-  release(maxSpeed = 38) {
+  /**
+   * Lets go; the brick launches with velocity proportional to the user's
+   * drag/flick force so gentle tosses stay close and hard throws fly far.
+   */
+  release(maxSpeed = 115) {
     const g = this.grab;
-    if (!g) return;
+    if (!g) return 0;
     this.world.removeConstraint(g.constraint);
-    g.body.angularDamping = 0.12;
-    g.body.linearDamping = 0.04;
-    const v = g.body.velocity;
-    const s = v.length();
-    if (s > maxSpeed) v.scale(maxSpeed / s, v);
+    this.grabBody.velocity.set(0, 0, 0);
+    const body = g.body;
+    body.angularDamping = 0.1;
+    body.linearDamping = 0.025;
+    body.wakeUp();
+
+    const v = body.velocity;
+    if (maxSpeed <= 0) {
+      v.set(0, 0, 0);
+      this.grab = null;
+      return 0;
+    }
+
+    const now = performance.now();
+    const samples = g.samples;
+    let vx = 0;
+    let vy = 0;
+    let vz = 0;
+    let hasGesture = false;
+
+    if (samples.length >= 2) {
+      const last = samples[samples.length - 1];
+      // Only treat as an active throw if the pointer moved recently (< 85ms before release)
+      if (now - last.t < 85) {
+        // Find a reference sample 25-95ms before the last sample for stable flick velocity
+        let ref = samples[0];
+        for (let i = samples.length - 2; i >= 0; i--) {
+          const dtMs = last.t - samples[i].t;
+          ref = samples[i];
+          if (dtMs >= 35) break;
+        }
+        const dtSec = (last.t - ref.t) / 1000;
+        if (dtSec > 0.003) {
+          vx = (last.x - ref.x) / dtSec;
+          vy = (last.y - ref.y) / dtSec;
+          vz = (last.z - ref.z) / dtSec;
+          hasGesture = true;
+        }
+      } else {
+        // Pointer was held still before releasing: drop gently from rest
+        v.scale(0.15, v);
+      }
+    }
+
+    if (hasGesture) {
+      const gain = 1.32;
+      vx *= gain;
+      vy *= gain;
+      vz *= gain;
+      const gSpeed = Math.hypot(vx, vy, vz);
+      const bSpeed = v.length();
+      if (gSpeed > bSpeed * 0.75) {
+        v.set(vx, vy, vz);
+      } else {
+        v.set(v.x * 0.4 + vx * 0.6, v.y * 0.4 + vy * 0.6, v.z * 0.4 + vz * 0.6);
+      }
+      const speed = v.length();
+      if (speed > 6) {
+        const horiz = Math.hypot(v.x, v.z);
+        if (v.y > -8) {
+          v.y += Math.min(14, horiz * 0.15);
+        }
+        // Impart tumble proportional to throw force
+        const spin = Math.min(22, speed * 0.24);
+        body.angularVelocity.set(
+          body.angularVelocity.x * 0.35 + (v.z / Math.max(1, speed)) * spin,
+          body.angularVelocity.y * 0.35 + ((v.x - v.z) / Math.max(1, speed)) * spin * 0.6,
+          body.angularVelocity.z * 0.35 - (v.x / Math.max(1, speed)) * spin,
+        );
+      }
+    }
+
+    const finalSpeed = v.length();
+    if (finalSpeed > maxSpeed) {
+      v.scale(maxSpeed / finalSpeed, v);
+    }
     this.grab = null;
+    return Math.min(finalSpeed, maxSpeed);
   }
 
   get count() {

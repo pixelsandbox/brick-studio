@@ -474,7 +474,7 @@ export class Stage {
     const sz = box.max.z - box.min.z;
     const cx = (box.max.x + box.min.x) / 2;
     const cz = (box.max.z + box.min.z) / 2;
-    const span = Math.max(sx, sz) * 2.6 + 12;
+    const span = Math.max(sx, sz) * 5.5 + 110;
     const catcher = new THREE.Mesh(
       new THREE.PlaneGeometry(span, span),
       new THREE.ShadowMaterial({ opacity: 0, depthWrite: false }),
@@ -1423,11 +1423,12 @@ export class Stage {
   _ensureSession(key) {
     if (this._session && this._session.key === key) return this._session;
     this._endSession();
-    const model = this.models[key];
-    const bb = model.bounds;
+    // Use an infinite ground plane; lateral & vertical boundaries are enforced
+    // against the exact 3D camera frustum of the screen canvas so bricks can be
+    // thrown across the entire viewport and bounce off the screen edges.
     this.physics.setEnvironment({
       groundY: 0,
-      bounds: { minX: bb.min[0] - 8, maxX: bb.max[0] + 8, minZ: bb.min[2] - 7, maxZ: bb.max[2] + 7 },
+      bounds: null,
     });
     this._session = { key, kind: 'knock' };
     return this._session;
@@ -1456,14 +1457,239 @@ export class Stage {
     b.lp.scl = 1;
   }
 
+  /**
+   * Clamps a model-local center position `localPos` so its world projection stays
+   * strictly inside the visible screen canvas frustum.
+   */
+  _clampLocalToScreen(localPos, b, fr) {
+    const scale = Math.max(0.05, fr.scale);
+    const invQuat = _q.copy(fr.quat).invert();
+    const brickRad = Math.hypot(b.half[0], b.half[1], b.half[2]) * scale * 1.05;
+
+    _p1.copy(localPos).sub(fr.pivot).multiplyScalar(scale).applyQuaternion(fr.quat).add(fr.pos);
+    const minZ = fr.pos.z - 42;
+    const maxZ = Math.min(CAM_Z - 26, fr.pos.z + 36);
+    _p1.z = clamp(_p1.z, minZ, maxZ);
+
+    const depth = CAM_Z - _p1.z;
+    const halfH = depth * TAN;
+    const halfW = halfH * this._aspect;
+    const limX = Math.max(0.5, halfW - (brickRad + halfW * 0.022));
+    const limY = Math.max(0.5, halfH - (brickRad + halfH * 0.028));
+
+    _p1.x = clamp(_p1.x, -limX, limX);
+    _p1.y = clamp(_p1.y, -limY, limY);
+
+    localPos.copy(_p1).sub(fr.pos).applyQuaternion(invQuat).divideScalar(scale).add(fr.pivot);
+    localPos.y = Math.max(b.half[1], localPos.y);
+    return localPos;
+  }
+
+  /**
+   * Keeps every loose brick strictly inside the screen canvas frustum and
+   * bounces bricks off the left/right/top/bottom canvas edges with velocity
+   * proportional to the user's throw force.
+   */
+  _constrainToScreenCanvas(key) {
+    const fr = this._frames[key];
+    if (!fr || !fr.valid) return;
+    const scale = Math.max(0.05, fr.scale);
+    const invQuat = _q.copy(fr.quat).invert();
+    const minZ = fr.pos.z - 42;
+    const maxZ = Math.min(CAM_Z - 26, fr.pos.z + 36);
+    const wallBounce = 0.65;
+    const wallFriction = 0.88;
+    let loudestImpact = 0;
+
+    for (const b of this._bricks) {
+      if (b.mode !== 'loose' || b.model !== key) continue;
+      const body = this.physics.bodies.get(b.id);
+      if (!body) continue;
+
+      const brickRad = Math.hypot(b.half[0], b.half[1], b.half[2]) * scale * 1.05;
+
+      // Transform body center & velocity from model space -> world space
+      _p1
+        .set(body.position.x, body.position.y, body.position.z)
+        .sub(fr.pivot)
+        .multiplyScalar(scale)
+        .applyQuaternion(fr.quat)
+        .add(fr.pos);
+      _p2
+        .set(body.velocity.x, body.velocity.y, body.velocity.z)
+        .multiplyScalar(scale)
+        .applyQuaternion(fr.quat);
+
+      let clamped = false;
+      let bounced = false;
+      let impact = 0;
+
+      if (_p1.z < minZ) {
+        _p1.z = minZ;
+        clamped = true;
+        if (_p2.z < 0) {
+          impact = Math.max(impact, -_p2.z / scale);
+          _p2.z = -_p2.z * 0.58;
+          bounced = true;
+        }
+      } else if (_p1.z > maxZ) {
+        _p1.z = maxZ;
+        clamped = true;
+        if (_p2.z > 0) {
+          impact = Math.max(impact, _p2.z / scale);
+          _p2.z = -_p2.z * 0.58;
+          bounced = true;
+        }
+      }
+
+      const depth = CAM_Z - _p1.z;
+      const halfH = depth * TAN;
+      const halfW = halfH * this._aspect;
+      const limX = Math.max(0.5, halfW - (brickRad + halfW * 0.022));
+      const limY = Math.max(0.5, halfH - (brickRad + halfH * 0.028));
+
+      // Left / Right screen canvas edges
+      if (_p1.x < -limX) {
+        _p1.x = -limX;
+        clamped = true;
+        if (_p2.x < 0) {
+          impact = Math.max(impact, -_p2.x / scale);
+          _p2.x = -_p2.x * wallBounce;
+          _p2.y *= wallFriction;
+          _p2.z *= wallFriction;
+          bounced = true;
+        }
+      } else if (_p1.x > limX) {
+        _p1.x = limX;
+        clamped = true;
+        if (_p2.x > 0) {
+          impact = Math.max(impact, _p2.x / scale);
+          _p2.x = -_p2.x * wallBounce;
+          _p2.y *= wallFriction;
+          _p2.z *= wallFriction;
+          bounced = true;
+        }
+      }
+
+      // Bottom / Top screen canvas edges
+      let hitBottom = false;
+      if (_p1.y < -limY) {
+        _p1.y = -limY;
+        clamped = true;
+        hitBottom = true;
+        if (_p2.y < 0) {
+          impact = Math.max(impact, -_p2.y / scale);
+          _p2.y = -_p2.y * wallBounce;
+          _p2.x *= wallFriction;
+          _p2.z *= wallFriction;
+          bounced = true;
+        }
+      } else if (_p1.y > limY) {
+        _p1.y = limY;
+        clamped = true;
+        if (_p2.y > 0) {
+          impact = Math.max(impact, _p2.y / scale);
+          _p2.y = -_p2.y * wallBounce;
+          _p2.x *= wallFriction;
+          _p2.z *= wallFriction;
+          bounced = true;
+        }
+      }
+
+      if (!clamped && !bounced) continue;
+
+      // Convert clamped world position & velocity back to model-local space
+      _v.copy(_p1).sub(fr.pos).applyQuaternion(invQuat).divideScalar(scale).add(fr.pivot);
+      _v2.copy(_p2).applyQuaternion(invQuat).divideScalar(scale);
+
+      // Keep above the tabletop ground plane (y = 0)
+      if (_v.y < b.half[1]) {
+        _v.y = b.half[1];
+        if (_v2.y < 0) {
+          impact = Math.max(impact, -_v2.y);
+          _v2.y = -_v2.y * 0.54;
+          bounced = true;
+        }
+      }
+
+      // If the brick is on the tabletop at the bottom screen edge, slide & bounce
+      // it inward along the tabletop so it never wedges or slips below the screen.
+      if (hitBottom && _v.y <= b.half[1] + 0.35) {
+        _s.set(0, 1, 0).applyQuaternion(invQuat);
+        const hx = _s.x;
+        const hz = _s.z;
+        const hLen = Math.hypot(hx, hz);
+        if (hLen > 0.05) {
+          const nx = hx / hLen;
+          const nz = hz / hLen;
+          // Re-verify world Y at _v.y = b.half[1]
+          _p1.copy(_v).sub(fr.pivot).multiplyScalar(scale).applyQuaternion(fr.quat).add(fr.pos);
+          if (_p1.y < -limY) {
+            const push = (-limY - _p1.y) / (scale * hLen);
+            _v.x += nx * push;
+            _v.z += nz * push;
+          }
+          const vn = _v2.x * nx + _v2.z * nz;
+          if (vn < 0) {
+            impact = Math.max(impact, -vn);
+            _v2.x -= (1 + wallBounce) * vn * nx;
+            _v2.z -= (1 + wallBounce) * vn * nz;
+            bounced = true;
+          }
+        }
+      }
+
+      body.position.set(_v.x, _v.y, _v.z);
+      body.previousPosition.set(_v.x, _v.y, _v.z);
+      body.interpolatedPosition.set(_v.x, _v.y, _v.z);
+
+      if (bounced) {
+        body.velocity.set(_v2.x, _v2.y, _v2.z);
+        if (impact > 2.5) {
+          body.wakeUp();
+          const spin = Math.min(14, impact * 0.18);
+          body.angularVelocity.x += (this._rand() - 0.5) * spin;
+          body.angularVelocity.y += (this._rand() - 0.5) * spin;
+          body.angularVelocity.z += (this._rand() - 0.5) * spin;
+        }
+        if (impact > loudestImpact) loudestImpact = impact;
+      }
+    }
+
+    if (loudestImpact > 3.5) {
+      this._play(loudestImpact > 10 ? 'click' : 'tick');
+    }
+  }
+
   _tickPhysics(dt) {
     const s = this._session;
     if (!s) return false;
     let awake = 0;
-    if (this.physics.count > 0) awake = this.physics.step(dt);
+    if (this.physics.count > 0) {
+      awake = this.physics.step(dt);
+      this._constrainToScreenCanvas(s.key);
+    }
     if (s.kind === 'knock') {
-      const anyLoose = this._bricks.some((b) => b.mode === 'loose');
-      const anyReturn = this._bricks.some((b) => b.mode === 'return');
+      let anyLoose = false;
+      let anyReturn = false;
+      let maxSpeedSq = 0;
+      for (const b of this._bricks) {
+        if (b.mode === 'loose') {
+          anyLoose = true;
+          const body = this.physics.bodies.get(b.id);
+          if (body) {
+            const v = body.velocity;
+            const spSq = v.x * v.x + v.y * v.y + v.z * v.z;
+            if (spSq > maxSpeedSq) maxSpeedSq = spSq;
+          }
+        } else if (b.mode === 'return') {
+          anyReturn = true;
+        }
+      }
+      // Let fast-thrown bricks finish bouncing before starting auto-return
+      if (maxSpeedSq > 16) {
+        this._lastInteract = Math.max(this._lastInteract, this._time - (IDLE_RETURN - 1.1));
+      }
       if (anyLoose && !this._ptr.drag && this._time - this._lastInteract > IDLE_RETURN) this._startReturns();
       else if (!anyLoose && !anyReturn && !this._ptr.drag) this._endSession();
     }
@@ -1481,8 +1707,10 @@ export class Stage {
       this.physics.remove(b.id);
       if (!b.ret) b.ret = { from: new Pose(), t: 0, dur: 0.6, landed: false };
       b.ret.from.copy(b.lp);
+      const home = this._entryPose(this.models[b.model], b.entry, _A).pos;
+      const dist = b.lp.pos.distanceTo(home);
       b.ret.t = -i * 0.032;
-      b.ret.dur = this._reduced ? 0.3 : 0.55 + b.rnd * 0.15;
+      b.ret.dur = this._reduced ? 0.3 : 0.55 + Math.min(0.32, dist * 0.006) + b.rnd * 0.14;
       b.ret.landed = false;
       b.mode = 'return';
     });
@@ -1500,8 +1728,9 @@ export class Stage {
     const travel = 0.78;
     const e = easeInOut(Math.min(1, u / travel));
     this._entryPose(this.models[b.model], b.entry, _L);
-    _p1.copy(r.from.pos).add(_v.set(0, 3, 0));
-    _p2.copy(_L.pos).add(_v.set(0, 2.4, 0));
+    const arcLift = Math.max(3, Math.min(11, r.from.pos.distanceTo(_L.pos) * 0.22));
+    _p1.copy(r.from.pos).add(_v.set(0, arcLift, 0));
+    _p2.copy(_L.pos).add(_v.set(0, Math.max(2.4, arcLift * 0.75), 0));
     bezier(b.lp.pos, r.from.pos, _p1, _p2, _L.pos, e);
     b.lp.quat.slerpQuaternions(r.from.quat, _L.quat, e);
     b.lp.scl = _L.scl;
@@ -1720,6 +1949,53 @@ export class Stage {
       ro.observe(this.canvas);
       this._listeners.push(() => ro.disconnect());
     }
+
+    // Allow grabbing/throwing loose bricks that landed anywhere on the screen canvas
+    // outside `.stage-slot`, and ensure drag tracking continues across the whole window.
+    const isInteractiveTarget = (t) =>
+      t instanceof Element &&
+      Boolean(t.closest('button, a, input, select, textarea, label, dialog, [role="button"]'));
+
+    const onWinDown = (e) => {
+      if (e.button !== undefined && e.button > 0) return;
+      const key = this._shown;
+      if (!key) return;
+      const slotEl = this._slots.get(key);
+      if (slotEl && e.target instanceof Node && slotEl.contains(e.target)) return;
+      if (isInteractiveTarget(e.target)) return;
+      this._ptr.x = e.clientX;
+      this._ptr.y = e.clientY;
+      const hit = this._pick();
+      if (hit && hit.b) {
+        this._onDown(e, key, slotEl || document.body);
+      }
+    };
+    const onWinMove = (e) => {
+      const key = this._shown;
+      if (!key) return;
+      const slotEl = this._slots.get(key);
+      if (slotEl && e.target instanceof Node && slotEl.contains(e.target)) return;
+      if (this._ptr.drag || this._ptr.orbit || this._ptr.down) {
+        this._onMove(e, key);
+      }
+    };
+    const onWinUp = (e) => {
+      const key = this._shown;
+      if (!key) return;
+      const slotEl = this._slots.get(key);
+      if (slotEl && e.target instanceof Node && slotEl.contains(e.target)) return;
+      if (this._ptr.drag || this._ptr.orbit || this._ptr.down) {
+        this._onUp(e, key, slotEl || document.body);
+      }
+    };
+    window.addEventListener('pointerdown', onWinDown);
+    window.addEventListener('pointermove', onWinMove);
+    window.addEventListener('pointerup', onWinUp);
+    this._listeners.push(() => {
+      window.removeEventListener('pointerdown', onWinDown);
+      window.removeEventListener('pointermove', onWinMove);
+      window.removeEventListener('pointerup', onWinUp);
+    });
   }
 
   _bindSlot(el, name) {
@@ -1984,17 +2260,11 @@ export class Stage {
     }
     if (b.mode !== 'loose') return;
     const fr = this._frames[key];
-    const upWorld = _v.copy(UP).applyQuaternion(fr.quat);
     const p = this._ptr;
-    let normal;
-    let point;
-    if (Math.abs(upWorld.z) > 0.6) {
-      normal = new THREE.Vector3(0, 1, 0);
-      point = local.clone().add(new THREE.Vector3(0, 1.2, 0));
-    } else {
-      normal = new THREE.Vector3(0, 0, 1).applyQuaternion(_q.copy(fr.quat).invert()).normalize();
-      point = local.clone();
-    }
+    // Always drag on a plane parallel to the screen canvas so the user can
+    // fling bricks across the entire viewport from any rotation angle.
+    const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(_q.copy(fr.quat).invert()).normalize();
+    const point = local.clone();
     this.physics.startGrab(b.id, local);
     p.drag = { b, normal, point, el };
     p.grabbing = true;
@@ -2015,7 +2285,8 @@ export class Stage {
     const p = this._ptr;
     const d = p.drag;
     if (!d) return;
-    this.physics.release(throwIt ? 38 : 0);
+    const speed = this.physics.release(throwIt ? 115 : 0);
+    if (throwIt && speed > 18) this._play('whoosh');
     d.el.style.cursor = '';
     d.el.style.touchAction = '';
     p.drag = null;
@@ -2036,7 +2307,8 @@ export class Stage {
       _ray.applyMatrix4(_m.copy(fr.inverse));
       _plane.setFromNormalAndCoplanarPoint(p.drag.normal, p.drag.point);
       if (_ray.intersectPlane(_plane, _v)) {
-        _v.y = Math.max(_v.y, 0.6);
+        _v.y = Math.max(_v.y, p.drag.b.half[1]);
+        this._clampLocalToScreen(_v, p.drag.b, fr);
         this.physics.moveGrab(_v);
       }
       this._lastInteract = this._time;
@@ -2076,14 +2348,23 @@ export class Stage {
     key3.target.position.copy(target);
     key3.target.updateMatrixWorld();
     const cam = key3.shadow.camera;
-    const ext = radius * 1.12;
-    if (Math.abs(cam.right - ext) > 1e-3) {
+    let ext = radius * 1.15;
+    if (this._session && this._session.key === key) {
+      for (const b of this._bricks) {
+        if ((b.mode === 'loose' || b.mode === 'return') && b.model === key) {
+          const d = b.wp.pos.distanceTo(target) + 2.5;
+          if (d > ext) ext = d;
+        }
+      }
+      ext = Math.min(ext, radius * 3.8);
+    }
+    if (Math.abs(cam.right - ext) > 1e-2) {
       cam.left = -ext;
       cam.right = ext;
       cam.top = ext;
       cam.bottom = -ext;
       cam.near = 1;
-      cam.far = radius * 6 + 70;
+      cam.far = Math.max(radius * 6 + 70, ext * 4 + 80);
       cam.updateProjectionMatrix();
     }
     key3.shadow.normalBias = 0.02 * fr.scale;
